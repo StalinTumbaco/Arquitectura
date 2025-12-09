@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: circuitbreaker-demo
+
+# Configuración de Resilience4j CircuitBreaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      demoCircuitBreaker:
+        # Porcentaje de fallos para abrir el circuito
+        failure-rate-threshold: 50
+        # Tamaño de la ventana deslizante para calcular la tasa de fallos
+        sliding-window-size: 4
+        # Tipo de ventana deslizante (COUNT_BASED o TIME_BASED)
+        sliding-window-type: COUNT_BASED
+        # Tiempo de espera en estado OPEN antes de pasar a HALF_OPEN
+        wait-duration-in-open-state: 5s
+        # Número de llamadas permitidas en estado HALF_OPEN
+        permitted-number-of-calls-in-half-open-state: 1
+        # Número mínimo de llamadas antes de calcular la tasa de fallos
+        minimum-number-of-calls: 4
+        # Activar transición automática de OPEN a HALF_OPEN
+        automatic-transition-from-open-to-half-open-enabled: true
+        # Registrar eventos de cambio de estado
+        register-health-indicator: true
+        # Registrar eventos en el EventConsumer
+        event-consumer-buffer-size: 10
+
+# Configuración de Actuator para exponer métricas
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,circuitbreakers,metrics
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+# Logging para ver los eventos del CircuitBreaker
+logging:
+  level:
+    io.github.resilience4j: DEBUG
+    com.resilience4j.demo: DEBUG
