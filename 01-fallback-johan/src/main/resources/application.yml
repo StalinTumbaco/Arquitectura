@@ -1,0 +1,53 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: circuit-breaker-demo
+  cache:
+    type: simple
+    cache-names:
+      - fallbackCache
+
+# Configuración del servicio externo
+external:
+  service:
+    url: http://localhost:8081/external/data
+
+# Configuración de Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      externalService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+        slowCallRateThreshold: 100
+        slowCallDurationThreshold: 2s
+        recordExceptions:
+          - java.lang.RuntimeException
+          - java.util.concurrent.TimeoutException
+
+# Actuator para monitoreo
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: false
+
+logging:
+  level:
+    com.fallback.demo: INFO
+    io.github.resilience4j: DEBUG
+

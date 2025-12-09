@@ -1,0 +1,6 @@
+com\fallback\demo\controller\ExternalServiceController.class
+com\fallback\demo\Application.class
+com\fallback\demo\service\ExternalApiService.class
+com\fallback\demo\config\RestTemplateConfig.class
+com\fallback\demo\service\FallbackService.class
+com\fallback\demo\controller\DemoController.class
