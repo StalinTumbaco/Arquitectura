@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pruebas Resilience4j - Bulkhead, Timeout, Retry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card p {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .result-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+
+        .info {
+            background: #d1ecf1;
+            border-color: #17a2b8;
+            color: #0c5460;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-box h3 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .stat-box p {
+            color: rgba(255,255,255,0.9);
+            margin: 0;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .icon {
+            font-size: 1.5em;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .timestamp {
+            font-size: 0.85em;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Pruebas de Resiliencia - Resilience4j</h1>
+
+        <!-- Prueba 1: Health Check -->
+        <div class="card">
+            <h2><span class="icon">❤️</span> Prueba 1: Health Check</h2>
+            <p>Verifica que el servidor esté funcionando correctamente.</p>
+            <button onclick="testHealth()" id="btnHealth">Ejecutar Health Check</button>
+            <div id="healthResults" class="results" style="display:none;"></div>
+        </div>
+
+        <!-- Prueba 2: Bulkhead -->
+        <div class="card">
+            <h2><span class="icon">🚢</span> Prueba 2: Bulkhead (Limitación de concurrencia)</h2>
+            <p>Envía múltiples peticiones simultáneas para demostrar que Bulkhead limita a 3 peticiones concurrentes.</p>
+            <div class="button-group">
+                <button onclick="testBulkhead(6)" id="btnBulkhead">Enviar 6 peticiones simultáneas</button>
+                <button onclick="testBulkhead(10)" id="btnBulkhead10">Enviar 10 peticiones</button>
+            </div>
+            <div id="bulkheadResults" class="results" style="display:none;"></div>
+            <div id="bulkheadStats" class="stats" style="display:none;">
+                <div class="stat-box">
+                    <h3 id="successCount">0</h3>
+                    <p>Exitosas</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="bulkheadCount">0</h3>
+                    <p>Bloqueadas por Bulkhead</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="totalCount">0</h3>
+                    <p>Total de peticiones</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prueba 3: Retry -->
+        <div class="card">
+            <h2><span class="icon">🔄</span> Prueba 3: Retry (Reintentos automáticos)</h2>
+            <p>Realiza peticiones que pueden fallar aleatoriamente. El sistema reintentará hasta 3 veces.</p>
+            <div class="button-group">
+                <button onclick="testRetry(5)" id="btnRetry">Hacer 5 peticiones</button>
+                <button onclick="testRetry(10)" id="btnRetry10">Hacer 10 peticiones</button>
+            </div>
+            <div id="retryResults" class="results" style="display:none;"></div>
+            <div id="retryStats" class="stats" style="display:none;">
+                <div class="stat-box">
+                    <h3 id="retrySuccess">0</h3>
+                    <p>Exitosas</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="retryFailed">0</h3>
+                    <p>Fallidas (3 intentos)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prueba 4: Combinada -->
+        <div class="card">
+            <h2><span class="icon">⚡</span> Prueba 4: Estrés Total (Todos los patrones)</h2>
+            <p>Prueba intensiva que demuestra los tres patrones trabajando juntos.</p>
+            <button onclick="stressTest()" id="btnStress">Iniciar Prueba de Estrés (20 peticiones)</button>
+            <div id="stressResults" class="results" style="display:none;"></div>
+            <div id="stressStats" class="stats" style="display:none;">
+                <div class="stat-box">
+                    <h3 id="stressSuccess">0</h3>
+                    <p>Exitosas</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="stressBulkhead">0</h3>
+                    <p>Bulkhead</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="stressRetry">0</h3>
+                    <p>Retry agotado</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="stressErrors">0</h3>
+                    <p>Otros errores</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8080';
+
+        function addResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString();
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result-item ${type}`;
+            resultDiv.innerHTML = `
+                <strong>${message}</strong>
+                <div class="timestamp">${timestamp}</div>
+            `;
+            container.insertBefore(resultDiv, container.firstChild);
+        }
+
+        function clearResults(containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+        }
+
+        async function testHealth() {
+            const btn = document.getElementById('btnHealth');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Verificando...';
+            clearResults('healthResults');
+
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.text();
+                
+                if (response.ok) {
+                    addResult('healthResults', `✅ ${data}`, 'success');
+                } else {
+                    addResult('healthResults', `❌ Error: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('healthResults', `❌ No se pudo conectar al servidor: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Ejecutar Health Check';
+            }
+        }
+
+        async function testBulkhead(count) {
+            const btn = document.getElementById('btnBulkhead');
+            const btn10 = document.getElementById('btnBulkhead10');
+            btn.disabled = true;
+            btn10.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Ejecutando...';
+            
+            clearResults('bulkheadResults');
+            document.getElementById('bulkheadStats').style.display = 'grid';
+
+            let successCount = 0;
+            let bulkheadCount = 0;
+            let totalCount = count;
+
+            addResult('bulkheadResults', `🚀 Enviando ${count} peticiones simultáneas...`, 'info');
+
+            const promises = [];
+            for (let i = 0; i < count; i++) {
+                promises.push(
+                    fetch(`${API_URL}/llamar`)
+                        .then(res => res.text())
+                        .then(data => {
+                            if (data.includes('BULKHEAD')) {
+                                bulkheadCount++;
+                                addResult('bulkheadResults', `🚫 Petición #${i+1}: BLOQUEADA por Bulkhead`, 'warning');
+                            } else if (data.includes('exitosa')) {
+                                successCount++;
+                                addResult('bulkheadResults', `✅ Petición #${i+1}: ${data}`, 'success');
+                            } else if (data.includes('RETRY')) {
+                                addResult('bulkheadResults', `⚠️ Petición #${i+1}: ${data}`, 'error');
+                            }
+                            return data;
+                        })
+                        .catch(error => {
+                            addResult('bulkheadResults', `❌ Petición #${i+1}: Error - ${error.message}`, 'error');
+                        })
+                );
+            }
+
+            await Promise.all(promises);
+
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('bulkheadCount').textContent = bulkheadCount;
+            document.getElementById('totalCount').textContent = totalCount;
+
+            addResult('bulkheadResults', 
+                `📊 Resultado: ${successCount} exitosas, ${bulkheadCount} bloqueadas por Bulkhead`, 
+                'info');
+
+            btn.disabled = false;
+            btn10.disabled = false;
+            btn.innerHTML = 'Enviar 6 peticiones simultáneas';
+        }
+
+        async function testRetry(count) {
+            const btn = document.getElementById('btnRetry');
+            const btn10 = document.getElementById('btnRetry10');
+            btn.disabled = true;
+            btn10.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Ejecutando...';
+            
+            clearResults('retryResults');
+            document.getElementById('retryStats').style.display = 'grid';
+
+            let successCount = 0;
+            let failedCount = 0;
+
+            addResult('retryResults', `🔄 Realizando ${count} peticiones con Retry habilitado...`, 'info');
+
+            for (let i = 0; i < count; i++) {
+                try {
+                    const response = await fetch(`${API_URL}/llamar`);
+                    const data = await response.text();
+                    
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    if (data.includes('exitosa')) {
+                        successCount++;
+                        addResult('retryResults', `✅ Petición #${i+1}: Exitosa`, 'success');
+                    } else if (data.includes('RETRY')) {
+                        failedCount++;
+                        addResult('retryResults', `❌ Petición #${i+1}: Retry agotado después de 3 intentos`, 'error');
+                    } else if (data.includes('BULKHEAD')) {
+                        addResult('retryResults', `⚠️ Petición #${i+1}: Bloqueada por Bulkhead`, 'warning');
+                    }
+                } catch (error) {
+                    failedCount++;
+                    addResult('retryResults', `❌ Petición #${i+1}: Error - ${error.message}`, 'error');
+                }
+            }
+
+            document.getElementById('retrySuccess').textContent = successCount;
+            document.getElementById('retryFailed').textContent = failedCount;
+
+            addResult('retryResults', 
+                `📊 Resultado: ${successCount} exitosas, ${failedCount} fallidas después de reintentos`, 
+                'info');
+
+            btn.disabled = false;
+            btn10.disabled = false;
+            btn.innerHTML = 'Hacer 5 peticiones';
+        }
+
+        async function stressTest() {
+            const btn = document.getElementById('btnStress');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Ejecutando prueba de estrés...';
+            
+            clearResults('stressResults');
+            document.getElementById('stressStats').style.display = 'grid';
+
+            let successCount = 0;
+            let bulkheadCount = 0;
+            let retryCount = 0;
+            let errorCount = 0;
+
+            addResult('stressResults', `⚡ PRUEBA DE ESTRÉS: 20 peticiones simultáneas`, 'info');
+
+            const promises = [];
+            for (let i = 0; i < 20; i++) {
+                promises.push(
+                    fetch(`${API_URL}/llamar`)
+                        .then(res => res.text())
+                        .then(data => {
+                            if (data.includes('exitosa')) {
+                                successCount++;
+                                addResult('stressResults', `✅ #${i+1}: Exitosa`, 'success');
+                            } else if (data.includes('BULKHEAD')) {
+                                bulkheadCount++;
+                                addResult('stressResults', `🚫 #${i+1}: Bulkhead`, 'warning');
+                            } else if (data.includes('RETRY')) {
+                                retryCount++;
+                                addResult('stressResults', `🔄 #${i+1}: Retry agotado`, 'error');
+                            }
+                        })
+                        .catch(error => {
+                            errorCount++;
+                            addResult('stressResults', `❌ #${i+1}: Error`, 'error');
+                        })
+                );
+            }
+
+            await Promise.all(promises);
+
+            document.getElementById('stressSuccess').textContent = successCount;
+            document.getElementById('stressBulkhead').textContent = bulkheadCount;
+            document.getElementById('stressRetry').textContent = retryCount;
+            document.getElementById('stressErrors').textContent = errorCount;
+
+            addResult('stressResults', 
+                `📊 RESUMEN: ${successCount} exitosas | ${bulkheadCount} bloqueadas | ${retryCount} retry agotado | ${errorCount} errores`, 
+                'info');
+
+            btn.disabled = false;
+            btn.innerHTML = 'Iniciar Prueba de Estrés (20 peticiones)';
+        }
+    </script>
+</body>
+</html>
